@@ -102,7 +102,7 @@ public class DexCollectionService extends Service implements BtCallBack {
     private static final int STATE_CONNECTED = BluetoothProfile.STATE_CONNECTED;
     private static final String PREF_DEX_COLLECTION_BONDING = "pref_dex_collection_bonding";
     private static final String PREF_DEX_COLLECTION_POLLING = "pref_dex_collection_polling";
-    private static final long POLLING_PERIOD = (Constants.MINUTE_IN_MS * 5) - Constants.SECOND_IN_MS;
+    private static final long POLLING_PERIOD = (Constants.MINUTE_IN_MS * 1) - Constants.SECOND_IN_MS;
     // TODO different pre-connect timeout windows for different hardware
     //private static final long RETRY_PERIOD = DEXCOM_PERIOD - (Constants.SECOND_IN_MS * 35);
     private static final long RETRY_PERIOD = DEXCOM_PERIOD - (Constants.SECOND_IN_MS * 95);
