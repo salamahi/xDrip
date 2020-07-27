@@ -81,11 +81,11 @@ public class LibreReceiver extends BroadcastReceiver {
                                 if (currentRawValue == null) return;
                                 Log.v(TAG,"got bg reading: from sensor:"+currentRawValue.serial+" rawValue:"+currentRawValue.glucose+" at:"+currentRawValue.timestamp);
                                 // period of 4.5 minutes to collect 5 readings
-                                if(!BgReading.last_within_millis(10 * 6 * 1000 )) {
+                                //if(!BgReading.last_within_millis(10 * 6 * 400 )) {
                                     List<Libre2RawValue> smoothingValues = Libre2RawValue.last20Minutes();
                                     smoothingValues.add(currentRawValue);
                                     processValues(currentRawValue, smoothingValues, context);
-                                }
+                                //}
                                 currentRawValue.save();
 
                                 break;
@@ -157,7 +157,7 @@ public class LibreReceiver extends BroadcastReceiver {
             }
         }
     }
-    private static long SMOOTHING_DURATION = TimeUnit.MINUTES.toMillis(25);
+    private static long SMOOTHING_DURATION = TimeUnit.MINUTES.toMillis(3);
 
 
     private static double calculateWeightedAverage(List<Libre2RawValue> rawValues, long now) {
