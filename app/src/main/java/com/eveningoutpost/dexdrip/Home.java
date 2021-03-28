@@ -1,6 +1,7 @@
 package com.eveningoutpost.dexdrip;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.AlertDialog;
@@ -53,7 +54,6 @@ import android.widget.ImageButton;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.crashlytics.android.Crashlytics;
 import com.eveningoutpost.dexdrip.G5Model.Ob1G5StateMachine;
 import com.eveningoutpost.dexdrip.ImportedLibraries.usbserial.util.HexDump;
 import com.eveningoutpost.dexdrip.Models.ActiveBgAlert;
@@ -190,6 +190,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     public final static String SHOW_NOTIFICATION = "SHOW_NOTIFICATION";
     public final static String BLUETOOTH_METER_CALIBRATION = "BLUETOOTH_METER_CALIBRATION";
     public final static String ACTIVITY_SHOWCASE_INFO = "ACTIVITY_SHOWCASE_INFO";
+    public final static String ENABLE_STREAMING_DIALOG = "ENABLE_STREAMING_DIALOG";
     public final static int SENSOR_READY_ID = 4912;
     private final UiPing ui = new UiPing();
     public static boolean activityVisible = false;
@@ -293,6 +294,8 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     private ActivityHomeBinding binding;
     private boolean is_newbie;
     private boolean checkedeula;
+    private static boolean has_libreblock = false;
+    private static boolean has_libreblock_set = false;
 
     @Inject
     BaseShelf homeShelf;
@@ -315,6 +318,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
     private static String statusBWP = "";
 
 
+    @SuppressLint("ObsoleteSdkInt")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         mActivity = this;
@@ -322,12 +326,6 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         if (!xdrip.checkAppContext(getApplicationContext())) {
             toast(gs(R.string.unusual_internal_context_problem__please_report));
             Log.wtf(TAG, "xdrip.checkAppContext FAILED!");
-            try {
-                xdrip.initCrashlytics(getApplicationContext());
-                Crashlytics.log("xdrip.checkAppContext FAILED!");
-            } catch (Exception e) {
-                // nothing we can do really
-            }
             try {
                 Thread.sleep(2000);
             } catch (InterruptedException e) {
@@ -738,7 +736,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                     dialog.dismiss();
                 });
 
-                builder.setNegativeButton("NO", (dialog, which) -> dialog.dismiss());
+                builder.setNegativeButton(gs(R.string.no), (dialog, which) -> dialog.dismiss());
 
                 AlertDialog alert = builder.create();
                 alert.show();
@@ -778,7 +776,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                     dialog.dismiss();
                 });
 
-                builder.setNegativeButton("NO", (dialog, which) -> {
+                builder.setNegativeButton(gs(R.string.no), (dialog, which) -> {
                     // TODO make this a blood test entry xx
                     calintent.putExtra("note_only", "true");
                     startIntentThreadWithDelayedRefresh(calintent);
@@ -805,7 +803,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                         dialog.dismiss();
                     });
 
-                    builder.setNegativeButton("NO", (dialog, which) -> dialog.dismiss());
+                    builder.setNegativeButton(gs(R.string.no), (dialog, which) -> dialog.dismiss());
 
                     final AlertDialog alert = builder.create();
                     alert.show();
@@ -873,7 +871,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                 if (exists == null) {
                     ArrayList<InsulinInjection> injections = new ArrayList<InsulinInjection>();
                     for (int i = 0; i < maxInsulinProfiles; i++)
-                        if (insulinset[i]) {
+                        if (insulinset[i] && thisinsulinprofile[i] != null) {
                             InsulinInjection injection = new InsulinInjection(thisinsulinprofile[i], thisinsulinnumber[i]);
                             injections.add(injection);
                         }
@@ -897,7 +895,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
             WatchUpdaterService.sendWearToast(gs(R.string.treatment_processed), Toast.LENGTH_LONG);
             ArrayList<InsulinInjection> injections = new ArrayList<InsulinInjection>();
             for (int i = 0; i < maxInsulinProfiles; i++)
-                if (insulinset[i]) {
+                if (insulinset[i] && thisinsulinprofile[i] != null) {
                     InsulinInjection injection = new InsulinInjection(thisinsulinprofile[i], thisinsulinnumber[i]);
                     injections.add(injection);
                 }
@@ -1048,7 +1046,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                                 staticRefreshBGCharts();
                                 JoH.static_toast_short(gs(R.string.deleted));
                             });
-                            builder1.setNegativeButton("No", (dialog1, which1) -> dialog1.dismiss());
+                            builder1.setNegativeButton(gs(R.string.no), (dialog1, which1) -> dialog1.dismiss());
                             final AlertDialog alert = builder1.create();
                             alert.show();
                         });
@@ -1064,6 +1062,8 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                         DidYouCancelAlarm.dialog(this, AlertPlayer::defaultSnooze);
                         break;
                 }
+            } else if (bundle.getString(Home.ENABLE_STREAMING_DIALOG) != null) {
+                NFCReaderX.enableBluetoothAskUser(mActivity);
             }
         }
     }
@@ -1098,6 +1098,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         intent.putExtra(extra, text);
         intent.putExtra(extra + "2", even_more);
         if (even_even_more.length() > 0) intent.putExtra(extra + "3", even_even_more);
+        Log.e("xxxxx", "calling startActivity");
         context.startActivity(intent);
     }
 
@@ -1558,23 +1559,25 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
             default:
                 if (MultipleInsulins.isEnabled()) {
                     final Insulin insulin = InsulinManager.getProfile(thisword);
-                    UserError.Log.d("TREATMENTS", "Processing for: " + (insulin != null ? insulin.getName() : "null"));
-                    int number = 0;
-                    for (number = 0; number < maxInsulinProfiles; number++)
-                        if ((thisinsulinprofile[number] == null) || (thisinsulinprofile[number] == insulin)) {
-                            thisinsulinprofile[number] = insulin;
-                            break;
+                    if (insulin != null) {
+                        UserError.Log.d("TREATMENTS", "Processing for: " + insulin.getName());
+                        int number = 0;
+                        for (number = 0; number < maxInsulinProfiles; number++)
+                            if ((thisinsulinprofile[number] == null) || (thisinsulinprofile[number] == insulin)) {
+                                thisinsulinprofile[number] = insulin;
+                                break;
+                            }
+                        if (!insulinset[number] && (thisnumber > 0)) {
+                            thisinsulinnumber[number] = thisnumber;
+                            textInsulinDose[number].setText(Double.toString(thisnumber) + " " + insulin.getName());
+                            Log.d(TAG, insulin.getName() + " dose: " + Double.toString(thisnumber));
+                            insulinset[number] = true;
+                            btnInsulinDose[number].setVisibility(View.VISIBLE);
+                            textInsulinDose[number].setVisibility(View.VISIBLE);
+                        } else {
+                            Log.d(TAG, insulin.getName() + " dose already set");
+                            preserve = true;
                         }
-                    if (!insulinset[number] && (thisnumber > 0)) {
-                        thisinsulinnumber[number] = thisnumber;
-                        textInsulinDose[number].setText(Double.toString(thisnumber) + " " + insulin.getName());
-                        Log.d(TAG, insulin.getName() + " dose: " + Double.toString(thisnumber));
-                        insulinset[number] = true;
-                        btnInsulinDose[number].setVisibility(View.VISIBLE);
-                        textInsulinDose[number].setVisibility(View.VISIBLE);
-                    } else {
-                        Log.d(TAG, insulin.getName() + " dose already set");
-                        preserve = true;
                     }
                 }
                 break;
@@ -1630,7 +1633,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
             }
             ArrayList<InsulinInjection> injections = new ArrayList<InsulinInjection>();
             for (int i = 0; i < maxInsulinProfiles; i++)
-                if (insulinset[i]) {
+                if (insulinset[i] && thisinsulinprofile[i] != null) {
                     InsulinInjection injection = new InsulinInjection(thisinsulinprofile[i], thisinsulinnumber[i]);
                     injections.add(injection);
                 }
@@ -2087,6 +2090,20 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         return Home.is_follower;
     }
 
+    private static void setHasLibreblock() {
+        has_libreblock =  LibreBlock.getLatestForTrend() != null;
+        has_libreblock_set = true;
+    }
+
+    public static boolean hasLibreblock() {
+        if (!has_libreblock_set) setHasLibreblock();
+        return has_libreblock;
+    }
+    
+    public static boolean get_is_libre_whole_house_collector() {
+        return Pref.getBooleanDefaultFalse("libre_whole_house_collector");
+    }
+
     public static boolean get_engineering_mode() {
         return Pref.getBooleanDefaultFalse("engineering_mode");
     }
@@ -2458,6 +2475,19 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         if (alreadyDisplayedBgInfoCommon) return; // with bluetooth and wifi, skip second time
         alreadyDisplayedBgInfoCommon = true;
 
+        if(get_is_libre_whole_house_collector()) {
+            Long lastReading = PersistentStore.getLong("libre-reading-timestamp");
+            if(lastReading == 0) {
+                notificationText.setText(R.string.in_libre_all_house_mode_no_readings_collected_yet);
+            } else {
+                int minutes = (int) (JoH.tsl() - lastReading) / (60 * 1000);
+                final String fmt = getString(R.string.minutes_ago);
+                notificationText.setText(R.string.in_libre_all_house_mode_last_data_collected);
+                notificationText.append(MessageFormat.format(fmt, minutes));
+            }
+            return;
+        }
+
         boolean isSensorActive = Sensor.isActive();
 
         // automagically start an xDrip sensor session if G5 transmitter already has active sensor
@@ -2476,7 +2506,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                     final Context context = this;
                     builder.setTitle(gs(R.string.restore_backup));
                     builder.setMessage(gs(R.string.do_you_want_to_restore_the_backup_file_) + Pref.getString("last-saved-database-zip", "ERROR").replaceFirst("^.*/", ""));
-                    builder.setNegativeButton("No", (dialog, which) -> dialog.dismiss());
+                    builder.setNegativeButton(gs(R.string.no), (dialog, which) -> dialog.dismiss());
                     builder.setPositiveButton(gs(R.string.restore), (dialog, which) -> {
                         dialog.dismiss();
                         startActivity(new Intent(context, ImportDatabaseActivity.class).putExtra("importit", Pref.getString("last-saved-database-zip", "")).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
@@ -2631,7 +2661,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
             final Context context = this;
             builder.setTitle(gs(R.string.calibrate_sensor));
             builder.setMessage(gs(R.string.we_have_some_readings__next_we_need_the_first_calibration_blood_test__ready_to_calibrate_now));
-            builder.setNegativeButton("No", (dialog, which) -> {
+            builder.setNegativeButton(gs(R.string.no), (dialog, which) -> {
                 dialog.dismiss();
                 helper_dialog = null;
             });
@@ -2760,7 +2790,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         }
 
         final int sensor_age = Pref.getInt("nfc_sensor_age", 0);
-        if ((sensor_age > 0) && (DexCollectionType.hasLibre())) {
+        if (sensor_age > 0 && (DexCollectionType.hasLibre() || hasLibreblock())) {
             final String age_problem = (Pref.getBooleanDefaultFalse("nfc_age_problem") ? " \u26A0\u26A0\u26A0" : "");
             if (Pref.getBoolean("nfc_show_age", true)) {
                 sensorAge.setText("Age: " + JoH.qs(((double) sensor_age) / 1440, 1) + "d" + age_problem);
@@ -3039,11 +3069,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
 
         menu.findItem(R.id.showreminders).setVisible(Pref.getBoolean("plus_show_reminders", true) && !is_newbie);
 
-        LibreBlock libreBlock = null;
-        if (DexCollectionType.hasLibre()) {
-            libreBlock = LibreBlock.getLatestForTrend();
-        }
-        if (libreBlock == null) {
+        if (!hasLibreblock()) {
             menu.findItem(R.id.libreLastMinutes).setVisible(false);
         }
 
@@ -3209,6 +3235,10 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
         Pref.setBoolean("default_to_voice_notes", !Pref.getBooleanDefaultFalse("default_to_voice_notes"));
     }
 
+    public void showNoteTextInputDialog(View myitem) {
+        showNoteTextInputDialog(myitem, JoH.tsl(), -1);
+    }
+
     public void showNoteTextInputDialog(View myitem, final long timestamp) {
         showNoteTextInputDialog(myitem, timestamp, -1);
     }
@@ -3260,7 +3290,7 @@ public class Home extends ActivityWithMenu implements ActivityCompat.OnRequestPe
                     staticRefreshBGCharts();
                     JoH.static_toast_short(gs(R.string.deleted));
                 });
-                builder.setNegativeButton("No", (dialog12, which) -> dialog12.dismiss());
+                builder.setNegativeButton(gs(R.string.no), (dialog12, which) -> dialog12.dismiss());
                 final AlertDialog alert = builder.create();
                 alert.show();
             });
