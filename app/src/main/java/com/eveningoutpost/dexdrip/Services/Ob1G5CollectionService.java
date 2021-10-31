@@ -38,6 +38,7 @@ import com.eveningoutpost.dexdrip.Home;
 import com.eveningoutpost.dexdrip.Models.BgReading;
 import com.eveningoutpost.dexdrip.Models.JoH;
 import com.eveningoutpost.dexdrip.Models.Sensor;
+import com.eveningoutpost.dexdrip.Models.Treatments;
 import com.eveningoutpost.dexdrip.Models.UserError;
 import com.eveningoutpost.dexdrip.R;
 import com.eveningoutpost.dexdrip.UtilityModels.BroadcastGlucose;
@@ -47,8 +48,10 @@ import com.eveningoutpost.dexdrip.UtilityModels.Inevitable;
 import com.eveningoutpost.dexdrip.UtilityModels.PersistentStore;
 import com.eveningoutpost.dexdrip.UtilityModels.Pref;
 import com.eveningoutpost.dexdrip.UtilityModels.RxBleProvider;
+import com.eveningoutpost.dexdrip.UtilityModels.SendFeedBack;
 import com.eveningoutpost.dexdrip.UtilityModels.StatusItem;
 import com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight;
+import com.eveningoutpost.dexdrip.UtilityModels.UpdateActivity;
 import com.eveningoutpost.dexdrip.UtilityModels.WholeHouse;
 import com.eveningoutpost.dexdrip.ui.helpers.Span;
 import com.eveningoutpost.dexdrip.utils.DexCollectionType;
@@ -952,10 +955,10 @@ public class Ob1G5CollectionService extends G5BaseService {
             final IntentFilter pairingRequestFilter = new IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST);
             pairingRequestFilter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
             try {
-                if (Build.VERSION.SDK_INT < 29) {
+                if (Build.VERSION.SDK_INT < 26) {
                     registerReceiver(mPairingRequestRecevier, pairingRequestFilter);
                 } else {
-                    UserError.Log.d(TAG, "Not registering pairing receiver on Android 10+");
+                    UserError.Log.d(TAG, "Not registering pairing receiver on Android 8+");
                 }
             } catch (Exception e) {
                 UserError.Log.e(TAG, "Could not register pairing request receiver:" + e);
@@ -1551,9 +1554,9 @@ public class Ob1G5CollectionService extends G5BaseService {
                                 changeState(GET_DATA);
                             }
                         } else if (parcel_device.getBondState() == BluetoothDevice.BOND_BONDING) {
-                            if (Build.VERSION.SDK_INT >= 29) {
+                            if (Build.VERSION.SDK_INT >= 26) {
                                 JoH.playResourceAudio(R.raw.bt_meter_connect);
-                                UserError.Log.uel(TAG, "Prompting user to notice pairing request with sound - On Android 10+ you have to manually pair when requested");
+                                UserError.Log.uel(TAG, "Prompting user to notice pairing request with sound - On Android 8+ you have to manually pair when requested");
                             }
                         }
                     }
@@ -1715,9 +1718,11 @@ public class Ob1G5CollectionService extends G5BaseService {
             final PendingIntent pi = PendingIntent.getActivity(xdrip.getAppContext(), G5_SENSOR_STARTED, JoH.getStartActivityIntent(Home.class), PendingIntent.FLAG_UPDATE_CURRENT);
             JoH.showNotification(state.getText(), "Sensor Stopped", pi, G5_SENSOR_STARTED, true, true, false);
             UserError.Log.ueh(TAG, "Native Sensor is now Stopped: " + state.getExtendedText());
+            Treatments.sensorStop(null, "Stopped by transmitter: " + state.getExtendedText());
         } else if (is_started && !was_started) {
             JoH.cancelNotification(G5_SENSOR_STARTED);
             UserError.Log.ueh(TAG, "Native Sensor is now Started: " + state.getExtendedText());
+            Treatments.sensorStartIfNeeded();
         }
 
         if (is_failed && !was_failed) {
@@ -1905,6 +1910,15 @@ public class Ob1G5CollectionService extends G5BaseService {
         }
     }
 
+    private static void handleUnknownFirmwareClick() {
+        UserError.Log.d(TAG, "handleUnknownFirmwareClick()");
+        if (UpdateActivity.testAndSetNightly(true)) {
+            val vr1 = (VersionRequest1RxMessage) Ob1G5StateMachine.getFirmwareXDetails(getTransmitterID(), 1);
+            UserError.Log.d(TAG, "Starting feedback activity");
+            xdrip.getAppContext().startActivity(new Intent(xdrip.getAppContext(), SendFeedBack.class).putExtra("generic_text", "Automated Report of unknown firmware version\n" + vr1.toString()).setFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        }
+    }
+
     // data for MegaStatus
     public static List<StatusItem> megaStatus() {
 
@@ -1993,8 +2007,9 @@ public class Ob1G5CollectionService extends G5BaseService {
         try {
             if (vr1 != null) {
                 val known = FirmwareCapability.isKnownFirmware(vr1.firmware_version_string);
-                val unknown = !known ? (" " + "Unknown!" + "\n" + "Please report") : "";
-                l.add(new StatusItem("Firmware Version", vr1.firmware_version_string + unknown, !known ? CRITICAL : FirmwareCapability.isG6Rev2(vr1.firmware_version_string) ? NOTICE : NORMAL));
+                val unknown = !known ? (" " + "Unknown!" + "\n" + (UpdateActivity.testAndSetNightly(false) ? "Tap to report" : "Tap to use nightly version")) : "";
+
+                l.add(new StatusItem("Firmware Version", vr1.firmware_version_string + unknown, !known ? CRITICAL : NORMAL, !known ? "long-press" : null, !known ? (Runnable) Ob1G5CollectionService::handleUnknownFirmwareClick : null));
                 //l.add(new StatusItem("Build Version", "" + vr1.build_version));
                 if (vr1.version_code != 3) {
                     l.add(new StatusItem("Compat Version", "" + vr1.version_code, Highlight.BAD));
@@ -2080,8 +2095,10 @@ public class Ob1G5CollectionService extends G5BaseService {
             l.add(new StatusItem("Transmitter Days", ((bt.runtime > -1) ? bt.runtime : "") + ((timekeeperDays > -1) ? ((FirmwareCapability.isTransmitterG6Rev2(tx_id) ? " " : " / ") + timekeeperDays) : "") + ((last_transmitter_timestamp > 0) ? " / " + JoH.qs((double) last_transmitter_timestamp / 86400, 1) : "")));
             l.add(new StatusItem("Voltage A", bt.voltagea, bt.voltagea < LOW_BATTERY_WARNING_LEVEL ? BAD : NORMAL));
             l.add(new StatusItem("Voltage B", bt.voltageb, bt.voltageb < (LOW_BATTERY_WARNING_LEVEL - 10) ? BAD : NORMAL));
-            if (vr != null && FirmwareCapability.isFirmwareTemperatureCapable(vr.firmware_version_string)) {
+            if (vr != null && FirmwareCapability.isFirmwareResistanceCapable(vr.firmware_version_string)) {
                 l.add(new StatusItem("Resistance", bt.resist, bt.resist > 1400 ? BAD : (bt.resist > 1000 ? NOTICE : (bt.resist > 750 ? NORMAL : Highlight.GOOD))));
+            }
+            if (vr != null && FirmwareCapability.isFirmwareTemperatureCapable(vr.firmware_version_string)) {
                 l.add(new StatusItem("Temperature", bt.temperature + " \u2103"));
             }
         }
