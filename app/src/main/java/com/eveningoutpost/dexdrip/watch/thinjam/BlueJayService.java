@@ -4,30 +4,31 @@ import android.annotation.SuppressLint;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattService;
 import android.content.Intent;
-import android.databinding.ObservableField;
+import androidx.databinding.ObservableField;
 import android.os.Binder;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.util.Pair;
 
-import com.eveningoutpost.dexdrip.G5Model.CalibrationState;
+import com.eveningoutpost.dexdrip.cloud.jamcm.Pusher;
+import com.eveningoutpost.dexdrip.g5model.CalibrationState;
 import com.eveningoutpost.dexdrip.Home;
-import com.eveningoutpost.dexdrip.ImportedLibraries.usbserial.util.HexDump;
-import com.eveningoutpost.dexdrip.Models.BgReading;
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.Models.Treatments;
-import com.eveningoutpost.dexdrip.Models.UserError;
+import com.eveningoutpost.dexdrip.importedlibraries.usbserial.util.HexDump;
+import com.eveningoutpost.dexdrip.models.BgReading;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.Treatments;
+import com.eveningoutpost.dexdrip.models.UserError;
 import com.eveningoutpost.dexdrip.R;
-import com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer;
-import com.eveningoutpost.dexdrip.Services.Ob1G5CollectionService;
-import com.eveningoutpost.dexdrip.UtilityModels.AlertPlayer;
-import com.eveningoutpost.dexdrip.UtilityModels.BroadcastSnooze;
-import com.eveningoutpost.dexdrip.UtilityModels.Constants;
-import com.eveningoutpost.dexdrip.UtilityModels.Inevitable;
-import com.eveningoutpost.dexdrip.UtilityModels.PersistentStore;
-import com.eveningoutpost.dexdrip.UtilityModels.Pref;
-import com.eveningoutpost.dexdrip.UtilityModels.StatusItem;
-import com.eveningoutpost.dexdrip.UtilityModels.Unitized;
+import com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer;
+import com.eveningoutpost.dexdrip.services.Ob1G5CollectionService;
+import com.eveningoutpost.dexdrip.utilitymodels.AlertPlayer;
+import com.eveningoutpost.dexdrip.utilitymodels.BroadcastSnooze;
+import com.eveningoutpost.dexdrip.utilitymodels.Constants;
+import com.eveningoutpost.dexdrip.utilitymodels.Inevitable;
+import com.eveningoutpost.dexdrip.utilitymodels.PersistentStore;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
+import com.eveningoutpost.dexdrip.utilitymodels.StatusItem;
+import com.eveningoutpost.dexdrip.utilitymodels.Unitized;
 import com.eveningoutpost.dexdrip.ui.activities.ThinJamActivity;
 import com.eveningoutpost.dexdrip.utils.BytesGenerator;
 import com.eveningoutpost.dexdrip.utils.bt.Helper;
@@ -76,27 +77,28 @@ import lombok.RequiredArgsConstructor;
 import lombok.Setter;
 import lombok.val;
 
-import static com.eveningoutpost.dexdrip.Models.JoH.bytesToHex;
-import static com.eveningoutpost.dexdrip.Models.JoH.msSince;
-import static com.eveningoutpost.dexdrip.Models.JoH.msTill;
-import static com.eveningoutpost.dexdrip.Models.JoH.niceTimeScalar;
-import static com.eveningoutpost.dexdrip.Models.JoH.threadSleep;
-import static com.eveningoutpost.dexdrip.Models.JoH.tsl;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.CLOSE;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.CLOSED;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.DISCOVER;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.INIT;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.SEND_QUEUE;
-import static com.eveningoutpost.dexdrip.Services.JamBaseBluetoothSequencer.BaseState.SLEEP;
-import static com.eveningoutpost.dexdrip.UtilityModels.BgGraphBuilder.DEXCOM_PERIOD;
-import static com.eveningoutpost.dexdrip.UtilityModels.Constants.HOUR_IN_MS;
-import static com.eveningoutpost.dexdrip.UtilityModels.Constants.MINUTE_IN_MS;
-import static com.eveningoutpost.dexdrip.UtilityModels.Constants.SECOND_IN_MS;
-import static com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight.BAD;
-import static com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight.CRITICAL;
-import static com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight.GOOD;
-import static com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight.NORMAL;
-import static com.eveningoutpost.dexdrip.UtilityModels.StatusItem.Highlight.NOTICE;
+import static com.eveningoutpost.dexdrip.models.JoH.bytesToHex;
+import static com.eveningoutpost.dexdrip.models.JoH.msSince;
+import static com.eveningoutpost.dexdrip.models.JoH.msTill;
+import static com.eveningoutpost.dexdrip.models.JoH.niceTimeScalar;
+import static com.eveningoutpost.dexdrip.models.JoH.pratelimit;
+import static com.eveningoutpost.dexdrip.models.JoH.threadSleep;
+import static com.eveningoutpost.dexdrip.models.JoH.tsl;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.CLOSE;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.CLOSED;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.DISCOVER;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.INIT;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.SEND_QUEUE;
+import static com.eveningoutpost.dexdrip.services.JamBaseBluetoothSequencer.BaseState.SLEEP;
+import static com.eveningoutpost.dexdrip.utilitymodels.BgGraphBuilder.DEXCOM_PERIOD;
+import static com.eveningoutpost.dexdrip.utilitymodels.Constants.HOUR_IN_MS;
+import static com.eveningoutpost.dexdrip.utilitymodels.Constants.MINUTE_IN_MS;
+import static com.eveningoutpost.dexdrip.utilitymodels.Constants.SECOND_IN_MS;
+import static com.eveningoutpost.dexdrip.utilitymodels.StatusItem.Highlight.BAD;
+import static com.eveningoutpost.dexdrip.utilitymodels.StatusItem.Highlight.CRITICAL;
+import static com.eveningoutpost.dexdrip.utilitymodels.StatusItem.Highlight.GOOD;
+import static com.eveningoutpost.dexdrip.utilitymodels.StatusItem.Highlight.NORMAL;
+import static com.eveningoutpost.dexdrip.utilitymodels.StatusItem.Highlight.NOTICE;
 import static com.eveningoutpost.dexdrip.watch.thinjam.BlueJay.shouldSendReadings;
 import static com.eveningoutpost.dexdrip.watch.thinjam.BlueJay.versionSufficient;
 import static com.eveningoutpost.dexdrip.watch.thinjam.BlueJayService.ThinJamState.ENABLE_NOTIFICATIONS;
@@ -125,6 +127,7 @@ import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_NOTIFY_TYPE
 import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_NOTIFY_TYPE_HIGH_ALERT;
 import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_NOTIFY_TYPE_LOW_ALERT;
 import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_NOTIFY_TYPE_TEXTBOX1;
+import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_NOTIFY_TYPE_TEXTBOX2;
 import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_OTA;
 import static com.eveningoutpost.dexdrip.watch.thinjam.Const.THINJAM_WRITE;
 import static com.eveningoutpost.dexdrip.watch.thinjam.firmware.BlueJayFirmware.parse;
@@ -237,7 +240,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
     {
         mState = new ThinJamState().setLI(I);
         I.backgroundStepDelay = 0;
-        setAutoConnect();
+        //setAutoConnect();
         I.autoReConnect = true; // TODO control these two from preference?
         //   I.playSounds = true;
         I.connectTimeoutMinutes = 55;
@@ -270,7 +273,10 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
         setSettings(Pref.getString("dex_txid", "").trim().toUpperCase());
     }
 
-    public void setSettings(final String txid) {
+    public void setSettings(String txid) {
+        if (txid.length() == 4) {
+            txid = "0B" + txid;
+        }
         if (txid.length() == 6) {
             queueGenericCommand(new SetTxIdTx(txid, "00:00:00:00:00:00").getBytes(), "Set TxId: " + txid, null);
         } else {
@@ -328,7 +334,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
     }
 
     private static int recordsPerHour() {
-        return (int) (HOUR_IN_MS / DEXCOM_PERIOD);
+        return (int) (HOUR_IN_MS / DEXCOM_PERIOD); // TODO collection period
     }
 
     private static Pair<Long, Long> getBackFillStatus() {
@@ -444,12 +450,13 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
     public void processInboundGlucose() {
         final BlueJayInfo info = BlueJayInfo.getInfo(I.address);
         final long inboundTimestamp = info.getTimestamp();
-        UserError.Log.d(TAG, "Processing inbound glucose: " + JoH.dateTimeText(info.getTimestamp()));
+        UserError.Log.d(TAG, "Processing inbound glucose: " + JoH.dateTimeText(info.getTimestamp())+" "+info.toS());
         // TODO allow only tighter windows for sync
         if (inboundTimestamp > 1561900000000L && inboundTimestamp < (tsl() + (Constants.MINUTE_IN_MS * 5))) {
             final BgReading bgReading = BgReading.last();
 
-            if (bgReading == null || msSince(bgReading.timestamp) > Constants.MINUTE_IN_MS * 4) {
+            if (bgReading == null || msSince(bgReading.timestamp) > Constants.MINUTE_IN_MS * 4) { // TODO collector frequency de-dupe period instead
+                // is a new reading
                 Ob1G5CollectionService.processCalibrationStateLite(CalibrationState.parse(info.state), inboundTimestamp);       /// TODO revisit
                 if (D && info.glucose == 1) {
                     info.glucose = 123;         // TODO THIS IS DEBUG ONLY!!
@@ -663,6 +670,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                                                 }
                                             } else {
                                                 UserError.Log.e(TAG, "Authentication failed! " + JoH.bytesToHex(bytes));
+                                                // TODO something here
                                             }
                                         }
                                     })
@@ -873,6 +881,14 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
         return max_backfill_hours;
     }
 
+    public void scheduleInterimEvents() {
+        if (JoH.pratelimit("bluejay-interim-events", 600)) {
+            UserError.Log.d(TAG, "Interim event trigger");
+            schedulePeriodicEvents();
+            doQueue();
+        }
+    }
+
     public void schedulePeriodicEvents() {
         final BlueJayInfo info = getInfo();
         if (info.status1Due()) {
@@ -897,13 +913,13 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
         if (BlueJay.isCollector() && (JoH.msSince(lastUsableGlucoseTimestamp) < MINUTE_IN_MS * 20)) {
             val bf_status = getBackFillStatus();
             if (bf_status.first > 0 && backFillOkayToAsk(bf_status.first)) {
-                int records = (int) ((JoH.msSince(bf_status.first) / DEXCOM_PERIOD) + 2);
+                int records = (int) ((JoH.msSince(bf_status.first) / DEXCOM_PERIOD) + 2); // TODO collector period
                 UserError.Log.d(TAG, "Earliest backfill time: " + JoH.dateTimeText(bf_status.first) + " Would like " + records + " backfill records");
                 final int max_backfill_hours = getMaxBackFillHours();
                 getBackFill(Math.min(records, max_backfill_hours * recordsPerHour()));
             }
         } else {
-            UserError.Log.d(TAG, "Not checking for backfill data as bluejay is not set as collector");
+            UserError.Log.d(TAG, "Not checking for backfill data as bluejay is not set as collector or doesn't have recent good data, last timestamp: " + JoH.dateTimeText(lastUsableGlucoseTimestamp));
         }
         UserError.Log.d(TAG, "schedule periodic events done");
         changeNextState();
@@ -1279,16 +1295,17 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                     notificationType = 0;
                     break;
                 case THINJAM_NOTIFY_TYPE_TEXTBOX1:
+                case THINJAM_NOTIFY_TYPE_TEXTBOX2:
                     notificationType = 6;
                     break;
                 case THINJAM_NOTIFY_TYPE_DIALOG:
                     notificationType = 9;
                     break;
                 case THINJAM_NOTIFY_TYPE_LOW_ALERT:
-                    notificationType = 2;
+                    notificationType = 4;
                     break;
                 case THINJAM_NOTIFY_TYPE_HIGH_ALERT:
-                    notificationType = 1;
+                    notificationType = 3;
                     break;
 
             }
@@ -1353,7 +1370,16 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                     awaiting_easy_auth = 0;
                     easyAuth();
                 } else {
-                    AlertPlayer.getPlayer().OpportunisticSnooze();
+                    if (!AlertPlayer.getPlayer().OpportunisticSnooze()) {
+                        if (pratelimit("bluejay-snooze", 60)) {
+                            if (Pusher.enabled()) {
+                                UserError.Log.d(TAG, "Attempting full snooze");
+                                AlertPlayer.getPlayer().Snooze(xdrip.getAppContext(), -1);
+                            } else {
+                                UserError.Log.d(TAG, "xDrip cloud not enabled so avoiding networked snooze");
+                            }
+                        }
+                    }
                     BroadcastSnooze.send();
                     BlueJayEmit.sendButtonPress(1);
                 }
@@ -1362,6 +1388,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
 
             case BackFill:
                 boolean changed = false;
+                boolean currentReading = false;
                 for (val backsie : pushRx.backfills) {
                     final long since = JoH.msSince(backsie.timestamp);
                     if ((since > HOUR_IN_MS * 6) || (since < 0)) {
@@ -1371,8 +1398,12 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                         if (backsie.mgdl > 12) { // TODO check this cut off
                             if (BgReading.getForPreciseTimestamp(backsie.timestamp, Constants.MINUTE_IN_MS * 4, false) == null) {
                                 try {
-                                    final BgReading bgr = BgReading.bgReadingInsertFromG5(backsie.mgdl, backsie.timestamp, "Backfill").appendSourceInfo("BlueJay"); // TODO bluejay
+                                    final BgReading bgr = BgReading.bgReadingInsertFromG5(backsie.mgdl, backsie.timestamp, "Backfill").appendSourceInfo("BlueJay", true);
                                     UserError.Log.d(TAG, "Adding backfilled reading: " + JoH.dateTimeText(backsie.timestamp) + " " + Unitized.unitized_string_static(backsie.mgdl));
+                                    if (since < MINUTE_IN_MS) {
+                                        lastUsableGlucoseTimestamp = backsie.timestamp;
+                                        currentReading = true;
+                                    }
                                     changed = true;
                                 } catch (NullPointerException e) {
                                     UserError.Log.e(TAG, "Got null pointer when trying to add backfilled data");
@@ -1386,8 +1417,9 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                 }
                 if (changed) {
                     Home.staticRefreshBGChartsOnIdle();
+                    scheduleInterimEvents();
                 }
-                if (JoH.quietratelimit("bluejay-backfill-received", 20)) {
+                if (!currentReading && JoH.quietratelimit("bluejay-backfill-received", 20)) {
                     backFillReceived();
                 }
                 break;
@@ -1581,7 +1613,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
                 setAddress(BlueJay.getMac());
 
                 I.playSounds = BlueJay.shouldBeepOnConnect();
-                setAutoConnect();
+              //  setAutoConnect();
 
                 if (intent != null) {
                     final String function = intent.getStringExtra("function");
@@ -1982,6 +2014,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
 
     private static final String PREF_BACKFILL_ASKED = "bluejay-backfill-asked";
     private static final String PREF_BACKFILL_RECEIVED = "bluejay-backfill-received";
+    private static final String PREF_BACKFILL_RECEIVED_COUNTER = "bluejay-backfill-counter";
 
     private boolean backFillOkayToAsk(long time) {
         // Todo add significant delay when asking for max records so we can handle situation where watch has nothing usefulbut keeps being asked
@@ -1992,10 +2025,20 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
         UserError.Log.d(TAG, "Backfill Okay To Ask: " + time + " vs " + last_asked);
         if (time / granularity == last_asked / granularity) {
             if (PersistentStore.getLong(PREF_BACKFILL_RECEIVED + I.address) / granularity == last_asked / granularity) {
-                // already received this backfill
-                UserError.Log.d(TAG, "Already received a backfill when asked for: " + JoH.dateTimeText(time));
-                return false;
+                val counter = PersistentStore.getLong(PREF_BACKFILL_RECEIVED_COUNTER + I.address);
+                UserError.Log.d(TAG, "Backfill counter at: " + counter);
+                if (counter > 4) {
+                    // already received this backfill
+                    UserError.Log.d(TAG, "Already received a backfill when asked for: " + JoH.dateTimeText(time));
+                    return false;
+                } else {
+
+                }
             }
+        } else {
+            // not same ask
+            UserError.Log.d(TAG, "Zero backfill counter");
+            PersistentStore.setLong(PREF_BACKFILL_RECEIVED_COUNTER + I.address, 0);
         }
         // not asked or not received
         PersistentStore.setLong(PREF_BACKFILL_ASKED + I.address, time);
@@ -2005,6 +2048,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
     // TODO move to info structure?
     private void backFillReceived() {
         PersistentStore.setLong(PREF_BACKFILL_RECEIVED + I.address, PersistentStore.getLong(PREF_BACKFILL_ASKED + I.address));
+        PersistentStore.incrementLong(PREF_BACKFILL_RECEIVED_COUNTER + I.address);
     }
 
     // Mega Status
@@ -2069,7 +2113,7 @@ public class BlueJayService extends JamBaseBluetoothSequencer {
         }
 
         val lastReadingTime = info.getTimestamp();
-        if (lastReadingTime > 0) {
+        if (lastReadingTime > 0 && lastReadingTime > 1728497951000L) {
             l.add(new StatusItem("Last Reading", String.format("%s ago", JoH.niceTimeScalar(msSince(info.getTimestamp())))));
         }
         l.add(new StatusItem("Charger", (info.isChargerConnected() ? "Connected" : "Not connected") + (Home.get_engineering_mode() ? (info.batteryPercent != -1 ? ("  " + info.batteryPercent + "%") : "") : "")));

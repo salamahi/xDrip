@@ -9,11 +9,13 @@ import android.os.Looper;
 import android.text.format.DateFormat;
 import android.widget.Toast;
 
+import com.activeandroid.ActiveAndroid;
 import com.activeandroid.Cache;
 import com.activeandroid.Configuration;
-import com.eveningoutpost.dexdrip.Models.JoH;
-import com.eveningoutpost.dexdrip.Models.UserError.Log;
-import com.eveningoutpost.dexdrip.UtilityModels.Pref;
+import com.eveningoutpost.dexdrip.models.JoH;
+import com.eveningoutpost.dexdrip.models.UserError.Log;
+import com.eveningoutpost.dexdrip.utilitymodels.Pref;
+import com.eveningoutpost.dexdrip.xdrip;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -47,6 +49,16 @@ public class DatabaseUtil {
                 Toast.makeText(context, text, Toast.LENGTH_LONG).show();
             }
         });
+    }
+
+    public static long getDataBaseSizeInBytes() {
+        try {
+            final String databaseName = new Configuration.Builder(xdrip.getAppContext()).create().getDatabaseName();
+            final File currentDB = xdrip.getAppContext().getDatabasePath(databaseName);
+            return currentDB.length();
+        } catch (Exception e) {
+            return -1;
+        }
     }
 
     public static String saveSql(Context context) {
@@ -354,6 +366,10 @@ public class DatabaseUtil {
                 destStream = new FileOutputStream(currentDBtmp);
                 dst = destStream.getChannel();
                 dst.transferFrom(src, 0, src.size());
+                destStream.flush();
+                // Close all active db connections before database import.
+                ActiveAndroid.clearCache();
+                ActiveAndroid.dispose();
                 currentDB.renameTo(currentDBold);
                 currentDBtmp.renameTo(currentDB);
                 currentDBold.delete();
